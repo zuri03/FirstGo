@@ -39,19 +39,32 @@ func (s *SpotifyApiClient) GetUserAnalysis() (string, error) {
 		return "error", errors.New("error: client not authorized")
 	}
 	authorization := fmt.Sprintf("Bearer %s", s.Token.AccessToken)
-	req, err := createRequest("GET", fmt.Sprintf("%s/me", baseApiUrl), nil, [2]string{"Authorization", authorization})
-	if err != nil {
-		return "error", err
-	}
-	resp, err := s.Client.Do(req)
-	if err != nil {
-		return "error", err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	json := string(body)
+	var obj map[string]interface{}
+	for offset := 0; ; offset += 30 {
+		req, err := createRequest("GET", fmt.Sprintf("%s/me/top/tracks?limit=30&offset=%d&time_range=medium_term", baseApiUrl, offset),
+			nil, [2]string{"Authorization", authorization})
 
-	return json, nil
+		if err != nil {
+			return "error", err
+		}
+
+		resp, err := s.Client.Do(req)
+		if err != nil {
+			return "error", err
+		}
+		defer resp.Body.Close()
+
+		body, err := ioutil.ReadAll(resp.Body)
+		//Need a better way to parse json
+		err = json.Unmarshal([]byte(body), &obj)
+
+		if err != nil {
+			break
+		}
+	}
+
+	//For now
+	return "", nil
 }
 func (s *SpotifyApiClient) GetItemFromString(search string, itemType string) (string, error) {
 
