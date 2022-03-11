@@ -13,7 +13,7 @@ import (
 )
 
 type SpotifyClient interface {
-	GenerateAuthorizationCodeUrl(redirectUri string) string
+	GenerateAuthorizationCodeUrl(redirectUri string, scopes ...string) string
 	GetClientAccessToken(method string, redirectUri string, code string) error
 	GetItemFromString(search string, itemType string) (string, error)
 	GetUserAnalysis() (string, error)
@@ -54,7 +54,7 @@ func analyzeUserProfile(writer http.ResponseWriter, req *http.Request) {
 	err := spotify.GetClientAccessToken("authorizationCode",
 		"http://localhost:8080/Analysis",
 		code[0])
-
+	fmt.Printf("code => %s \n", code[0])
 	if err != nil {
 		writer.WriteHeader(400)
 		writer.Write([]byte("Error with spotify api"))
@@ -101,6 +101,6 @@ func InitializeServer() {
 }
 
 func SendTest() (string, error) {
-	url := spotify.GenerateAuthorizationCodeUrl("http://localhost:8080/Analysis")
+	url := spotify.GenerateAuthorizationCodeUrl("http://localhost:8080/Analysis", "user-top-read")
 	return url, nil
 }

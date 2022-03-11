@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	Spotify "github.com/zuri03/FirstGo/pkg/spotifyClient"
+	Spotify "github.com/zuri03/FirstGo/pkg/spotify"
 )
 
 func TestItemIdEndpoint(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"unicode"
 
 	FirstGo "github.com/zuri03/FirstGo/pkg/server"
-	Spotify "github.com/zuri03/FirstGo/pkg/spotifyClient"
+	Spotify "github.com/zuri03/FirstGo/pkg/spotify"
 )
 
 func main() {
