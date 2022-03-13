@@ -13,13 +13,13 @@ import (
 func TestItemIdEndpoint(t *testing.T) {
 
 	client := Spotify.NewClient()
-	SetSpotifyClient(client)
 
 	t.Run("Get info returns error on null query parameters", func(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, "/Info", nil)
 		resp := httptest.NewRecorder()
 
-		getItemInfo(resp, req)
+		spotify := getItemHandler{spotify: client}
+		spotify.ServeHTTP(resp, req)
 
 		if resp.Code != 400 {
 			t.Errorf("Expected error code 400 got: %d \n", resp.Code)
@@ -34,7 +34,8 @@ func TestItemIdEndpoint(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, "/Info?search=future", nil)
 		resp := httptest.NewRecorder()
 
-		getItemInfo(resp, req)
+		spotify := analysisHandler{spotify: client}
+		spotify.ServeHTTP(resp, req)
 
 		if resp.Code != 200 {
 			t.Errorf("Wanted success status code go: %d", resp.Code)

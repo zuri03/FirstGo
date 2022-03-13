@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	FirstGo "github.com/zuri03/FirstGo/pkg/server"
+	Server "github.com/zuri03/FirstGo/pkg/server"
 	Spotify "github.com/zuri03/FirstGo/pkg/spotify"
 )
 
@@ -19,7 +19,7 @@ func main() {
 		return -1
 	}
 
-	data, err := os.ReadFile("../.env")
+	data, err := os.ReadFile("../../.env")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -35,9 +35,9 @@ func main() {
 	os.Setenv(clientSecret[0], secret)
 
 	fmt.Println("====== INITIALIZING SERVER =====")
-	FirstGo.SetSpotifyClient(Spotify.NewClient())
-	FirstGo.InitializeServer()
-	url, err := FirstGo.SendTest()
+	c := Spotify.NewClient()
+	Server.InitializeServer(c)
+	url := c.GenerateAuthorizationCodeUrl("http://localhost:8080/Analysis", "user-top-read")
 	if err != nil {
 		fmt.Printf("error: %s \n", err)
 		return

@@ -1,6 +1,6 @@
-package spotify
+package server
 
-type reponse struct {
+type userInfo struct {
 	Items    []item `json:"items"`
 	Total    int    `json:"total"`
 	Limit    int    `json:"limit"`
@@ -12,7 +12,7 @@ type reponse struct {
 
 type item struct {
 	Album            album       `json:"album"`
-	Artists          artist      `json:"artists"`
+	Artists          []artist    `json:"artists"`
 	AvailableMarkets []string    `json:"available_markets"`
 	DiscNumber       int         `json:"disc_number"`
 	Duration         int         `json:"duration_ms"`

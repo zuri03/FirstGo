@@ -35,66 +35,33 @@ const (
 	authUrl    = "https://accounts.spotify.com"
 )
 
-func (s *SpotifyApiClient) GetUserAnalysis() (string, error) {
+func (s *SpotifyApiClient) GetUserAnalysis(offset int) ([]byte, error) {
 	if s.Token == nil || s.Token.AccessToken == "" {
-		return "error", errors.New("error: client not authorized")
+		return nil, errors.New("error: client not authorized")
 	}
 	authorization := fmt.Sprintf("Bearer %s", s.Token.AccessToken)
-
-	//offset := 0
-	//url := fmt.Sprintf("%s/me/top/tracks?limit=30&offset=%d&time_range=medium_term", baseApiUrl, offset)
-	url := fmt.Sprintf("%s/me/top/tracks?limit=2&time_range=long_term", baseApiUrl)
+	url := fmt.Sprintf("%s/me/top/tracks?limit=50&offset=%d&time_range=long_term", baseApiUrl, offset)
 	req, err := createRequest("GET", url, nil, [2]string{"Authorization", authorization})
 
 	if err != nil {
-		return "error", err
+		return nil, err
 	}
 
 	resp, err := s.Client.Do(req)
 	if err != nil {
-		return "error", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 
-	//Need a better way to parse json
-	var obj reponse
-	err = json.Unmarshal([]byte(body), &obj)
-	fmt.Printf("status code => %d \n", resp.StatusCode)
-	fmt.Printf("status => %s \n", resp.Status)
-	return string(body), err
-
 	/*
-		var url string
-		var obj map[string]interface{}
-		for offset := 0; ; offset += 30 {
-			url = fmt.Sprintf("%s/me/top/tracks?limit=30&offset=%d&time_range=medium_term", baseApiUrl, offset)
-			req, err := createRequest("GET", url, nil, [2]string{"Authorization", authorization})
-
-			if err != nil {
-				return "error", err
-			}
-
-			resp, err := s.Client.Do(req)
-			if err != nil {
-				return "error", err
-			}
-			defer resp.Body.Close()
-
-			body, err := ioutil.ReadAll(resp.Body)
-			//Need a better way to parse json
-			err = json.Unmarshal([]byte(body), &obj)
-
-			if err != nil {
-				break
-			}
-
-		}
+		fmt.Printf("status => %s \n", resp.Status)
+		fmt.Printf("json => %s \n", string(body))
 	*/
-	//For now
-	//return "", nil
+	return body, err
 }
+
 func (s *SpotifyApiClient) GetItemFromString(search string, itemType string) (string, error) {
 
 	if s.Token == nil || s.Token.AccessToken == "" {
