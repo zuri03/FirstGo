@@ -33,7 +33,7 @@ func (h *analysisHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 
 	code, ok := values["code"]
 	if !ok {
-		url := h.spotify.GenerateAuthorizationCodeUrl("http://localhost:8080/Analysis")
+		url := h.spotify.GenerateAuthorizationCodeUrl("http://localhost:8080/Analysis", "user-top-read")
 		http.Redirect(writer, req, url, 301)
 		return
 	}
@@ -70,6 +70,7 @@ func (h *analysisHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 			break
 		}
 	}
+
 	genStats, err := generalStats(responses)
 	if err != nil {
 		writer.WriteHeader(400)

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"unicode"
 
-	Server "github.com/zuri03/FirstGo/pkg/server"
-	Spotify "github.com/zuri03/FirstGo/pkg/spotify"
+	Server "github.com/zuri03/FirstGo/server"
+	Spotify "github.com/zuri03/FirstGo/spotify"
 )
 
 func main() {
