@@ -7,7 +7,6 @@ import (
 	"unicode"
 
 	Server "github.com/zuri03/FirstGo/server"
-	Spotify "github.com/zuri03/FirstGo/spotify"
 )
 
 func main() {
@@ -35,8 +34,7 @@ func main() {
 	os.Setenv(clientSecret[0], secret)
 
 	fmt.Println("====== INITIALIZING SERVER =====")
-	c := Spotify.NewClient()
-	Server.InitializeServer(c)
+	Server.InitializeServer()
 
 	for {
 
