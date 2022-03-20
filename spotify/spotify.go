@@ -1,12 +1,7 @@
 package spotify
 
-/*
-*TODO: Convert all of these functions to methods
- */
-//client should be reused on every request not recreated
 import (
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,13 +16,6 @@ import (
 //Client acess token
 type SpotifyApiClient struct {
 	Client *http.Client
-	Token  *spotifyAccessToken
-}
-type spotifyAccessToken struct {
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	ExpiresIn    int    `json:"expires_in"`
-	RefreshToken string `json:"refresh_token"`
 }
 
 const (
@@ -35,12 +23,12 @@ const (
 	authUrl    = "https://accounts.spotify.com"
 )
 
-func (s *SpotifyApiClient) GetUserAnalysis(offset int) ([]byte, error) {
-	if s.Token == nil || s.Token.AccessToken == "" {
+func (s *SpotifyApiClient) GetUserTopItems(offset int, limit int, accessToken string) ([]byte, error) {
+	if accessToken == "" {
 		return nil, errors.New("error: client not authorized")
 	}
-	authorization := fmt.Sprintf("Bearer %s", s.Token.AccessToken)
-	url := fmt.Sprintf("%s/me/top/tracks?limit=50&offset=%d&time_range=long_term", baseApiUrl, offset)
+	authorization := fmt.Sprintf("Bearer %s", accessToken)
+	url := fmt.Sprintf("%s/me/top/tracks?limit=%d&offset=%d&time_range=long_term", baseApiUrl, limit, offset)
 	req, err := createRequest("GET", url, nil, [2]string{"Authorization", authorization})
 
 	if err != nil {
@@ -62,51 +50,123 @@ func (s *SpotifyApiClient) GetUserAnalysis(offset int) ([]byte, error) {
 	return body, err
 }
 
-func (s *SpotifyApiClient) GetItemFromString(search string, itemType string) (string, error) {
+func (s *SpotifyApiClient) GetItemFromId(itemType string, accessToken string, ids ...string) ([]byte, error) {
 
-	if s.Token == nil || s.Token.AccessToken == "" {
-		s.GetClientAccessToken("clientCredentials", "", "")
+	if accessToken == "" {
+		bytes, err := s.GetClientAccessToken("clientCredentials", "", "")
+		if err != nil {
+			return nil, err
+		}
+		accessToken = string(bytes)
 	}
-	url := fmt.Sprintf("%s/search?q=%s&type=%s&limit=1", baseApiUrl, url.QueryEscape(search), url.QueryEscape(itemType))
+
+	idsParam := strings.Join(ids, ",")
+	var endpoint string
+	switch itemType {
+	case "album":
+		if len(ids) == 1 {
+			endpoint = fmt.Sprintf("%s/albums/%s", baseApiUrl,
+				url.QueryEscape(ids[0]))
+		} else {
+			endpoint = fmt.Sprintf("%s/albums/%s", baseApiUrl,
+				url.QueryEscape(idsParam))
+		}
+	case "artist":
+		if len(ids) == 1 {
+			endpoint = fmt.Sprintf("%s/artists/%s", baseApiUrl, url.QueryEscape(ids[0]))
+		} else {
+			endpoint = fmt.Sprintf("%s/artists/%s", baseApiUrl, url.QueryEscape(idsParam))
+		}
+	default:
+		return nil, errors.New("error: incorrect item type only \"album\" or \"artits\" allowed")
+	}
 
 	//Query search term endpoint
-	authorizationValue := fmt.Sprintf("Bearer %s", s.Token.AccessToken)
-	req, err := createRequest("GET", url, nil,
+	authorizationValue := fmt.Sprintf("Bearer %s", accessToken)
+	req, err := createRequest("GET", endpoint, nil,
 		[2]string{"Authorization", authorizationValue},
 		[2]string{"Content-Type", "application/json"})
 
 	resp, err := s.Client.Do(req)
 	if err != nil {
-		return "error", err
+		return nil, err
 	}
 
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	json := string(body)
 
-	return json, nil
+	return body, nil
 }
 
-func createRequest(method string, url string, body io.Reader, headers ...[2]string) (*http.Request, error) {
-	//For now it can only fetch resources
-	req, err := http.NewRequest(method, url, body)
+func (s *SpotifyApiClient) GetItemFromName(search string, itemType string, accessToken string) ([]byte, error) {
+
+	if accessToken == "" {
+		bytes, err := s.GetClientAccessToken("clientCredentials", "", "")
+		if err != nil {
+			return nil, err
+		}
+		accessToken = string(bytes)
+	}
+
+	endpoint := fmt.Sprintf("%s/search?q=%s&type=%s&limit=1", baseApiUrl,
+		url.QueryEscape(search),
+		url.QueryEscape(itemType))
+
+	//Query search term endpoint
+	authorizationValue := fmt.Sprintf("Bearer %s", accessToken)
+	req, err := createRequest("GET", endpoint, nil,
+		[2]string{"Authorization", authorizationValue},
+		[2]string{"Content-Type", "application/json"})
+
+	resp, err := s.Client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, header := range headers {
-		req.Header.Add(header[0], header[1])
-	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
 
-	return req, nil
+	return body, nil
 }
 
-//Client Authorization and Intialization Functions
-func NewClient() *SpotifyApiClient {
-	return &SpotifyApiClient{
-		Client: &http.Client{},
-		Token:  nil,
+func (s *SpotifyApiClient) GetClientAccessToken(method string, redirectUri string, code string) ([]byte, error) {
+
+	form := url.Values{}
+	if method == "authorizationCode" {
+		form.Add("code", code)
+		form.Add("grant_type", "authorization_code")
+		form.Add("redirect_uri", redirectUri)
+	} else if method == "clientCredentials" {
+		form.Add("grant_type", "client_credentials")
 	}
+
+	c := fmt.Sprintf("%s:%s", os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"))
+	authorization := fmt.Sprintf("Basic %s", base64.StdEncoding.EncodeToString([]byte(c)))
+
+	url := fmt.Sprintf("%s/api/token", authUrl)
+	req, err := createRequest("POST", url, strings.NewReader(form.Encode()),
+		[2]string{"Authorization", authorization},
+		[2]string{"Content-Type", "application/x-www-form-urlencoded"})
+
+	if err != nil {
+		fmt.Printf("error in request creation: %s \n", err)
+		return nil, err
+	}
+
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		fmt.Printf("error on token request: %s", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("error on reading body: %s", err)
+		return nil, err
+	}
+
+	return bytes, nil
 }
 
 //Make this function private after testing
@@ -131,6 +191,7 @@ func (s *SpotifyApiClient) GenerateAuthorizationCodeUrl(redirectUri string, scop
 		scopeStr = ""
 
 		for _, scope := range scopes {
+			fmt.Printf("scope found => %s\n", scope)
 			scopeStr += fmt.Sprintf("%s ", scope)
 		}
 
@@ -140,51 +201,152 @@ func (s *SpotifyApiClient) GenerateAuthorizationCodeUrl(redirectUri string, scop
 	return uri
 }
 
-func (s *SpotifyApiClient) GetClientAccessToken(method string, redirectUri string, code string) error {
-
-	form := url.Values{}
-	if method == "authorizationCode" {
-		form.Add("code", code)
-		form.Add("grant_type", "authorization_code")
-		form.Add("redirect_uri", redirectUri)
-	} else if method == "clientCredentials" {
-		form.Add("grant_type", "client_credentials")
+func (s *SpotifyApiClient) GetRelatedArtist(artistId string, accessToken string) ([]byte, error) {
+	if accessToken == "" {
+		return nil, errors.New("error: client not authenticated")
 	}
 
-	c := fmt.Sprintf("%s:%s", os.Getenv("CLIENT_ID"), os.Getenv("CLIENT_SECRET"))
-	authorization := fmt.Sprintf("Basic %s", base64.StdEncoding.EncodeToString([]byte(c)))
+	endpoint := fmt.Sprintf("%s/artists/%s/related-artists", baseApiUrl,
+		url.QueryEscape(artistId))
 
-	url := fmt.Sprintf("%s/api/token", authUrl)
-	req, err := createRequest("POST", url, strings.NewReader(form.Encode()),
-		[2]string{"Authorization", authorization},
-		[2]string{"Content-Type", "application/x-www-form-urlencoded"})
+	//Query search term endpoint
+	authorizationValue := fmt.Sprintf("Bearer %s", accessToken)
+	req, err := createRequest("GET", endpoint, nil,
+		[2]string{"Authorization", authorizationValue},
+		[2]string{"Content-Type", "application/json"})
 
 	if err != nil {
-		fmt.Printf("error in request creation: %s \n", err)
-		return err
+		return nil, err
 	}
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	return body, nil
+}
+
+func (s *SpotifyApiClient) GetTracksFromArtist(artistId string, accessToken string) ([]byte, error) {
+	if accessToken == "" {
+		return nil, errors.New("error: client not authenticated")
+	}
+
+	endpoint := fmt.Sprintf("%s/artists/%s/top-tracks", baseApiUrl,
+		url.QueryEscape(artistId))
+
+	//Query search term endpoint
+	authorizationValue := fmt.Sprintf("Bearer %s", accessToken)
+	req, err := createRequest("GET", endpoint, nil,
+		[2]string{"Authorization", authorizationValue},
+		[2]string{"Content-Type", "application/json"})
+
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	return body, nil
+}
+
+func (s *SpotifyApiClient) GetSavedTracks(accessToken string) ([]byte, error) {
+
+	if accessToken == "" {
+		return nil, errors.New("error: client not authenticated")
+	}
+
+	endpoint := fmt.Sprintf("%s/me/tracks", baseApiUrl)
+
+	//Query search term endpoint
+	authorizationValue := fmt.Sprintf("Bearer %s", accessToken)
+	req, err := createRequest("GET", endpoint, nil,
+		[2]string{"Authorization", authorizationValue},
+		[2]string{"Content-Type", "application/json"})
 
 	resp, err := s.Client.Do(req)
 	if err != nil {
-		fmt.Printf("error on token request: %s", err)
-		return err
+		return nil, err
 	}
+
 	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
 
-	bytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Printf("error on reading body: %s", err)
-		return err
+	return body, nil
+}
+
+func (s *SpotifyApiClient) GetRecommendations(artistId []string, genres []string, trackIds []string, accessToken string) ([]byte, error) {
+	if accessToken == "" {
+		return nil, errors.New("error: client not authenticated")
 	}
-	body := string(bytes)
+	/*
 
-	var token spotifyAccessToken
+		for i, art := range artistId {
+			artistId[i] = url.QueryEscape(art)
+		}
 
-	err = json.Unmarshal([]byte(body), &token)
+			for i, gen := range genres {
+				genres[i] = url.QueryEscape(gen)
+			}
+
+		for i, trck := range trackIds {
+			trackIds[i] = url.QueryEscape(trck)
+		}
+	*/
+	//artistParam := strings.Join(artistId, ",")
+	genresParam := strings.Join(genres, ",")
+	//tracksParam := strings.Join(trackIds, ",")
+	/*
+		endpoint := fmt.Sprintf("%s/recommendations?seed_artists=%s&seed_genres=%s&seed_tracks=%s", baseApiUrl,
+			artistParam, genresParam, tracksParam)*/
+	_ = "conscious+hip+hop, hip+hop, rap, west+coast+rap"
+	endpoint := fmt.Sprintf("%s/recommendations?seed_artists=%s&seed_genres=%s&seed_tracks=%s", baseApiUrl,
+		url.QueryEscape(strings.Join(artistId, ",")),
+		url.QueryEscape(strings.Join(genres, ",")),
+		url.QueryEscape(strings.Join(trackIds, ",")))
+
+	fmt.Printf("ENDPOINT REC => %s\n", genresParam)
+	//Query search term endpoint
+	authorizationValue := fmt.Sprintf("Bearer %s", accessToken)
+	req, err := createRequest("GET", endpoint, nil,
+		[2]string{"Authorization", authorizationValue},
+		[2]string{"Content-Type", "application/json"})
+
 	if err != nil {
-		fmt.Printf("error formatting json: %s \n", err)
-		return err
+		return nil, err
 	}
-	s.Token = &token
-	return nil
+	resp, err := s.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	return body, nil
+}
+
+func createRequest(method string, url string, body io.Reader, headers ...[2]string) (*http.Request, error) {
+	//For now it can only fetch resources
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, header := range headers {
+		req.Header.Add(header[0], header[1])
+	}
+
+	return req, nil
+}
+
+//Client Authorization and Intialization Functions
+func NewClient() *SpotifyApiClient {
+	return &SpotifyApiClient{
+		Client: &http.Client{},
+	}
 }

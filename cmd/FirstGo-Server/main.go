@@ -37,13 +37,9 @@ func main() {
 	fmt.Println("====== INITIALIZING SERVER =====")
 	c := Spotify.NewClient()
 	Server.InitializeServer(c)
-	url := c.GenerateAuthorizationCodeUrl("http://localhost:8080/Analysis", "user-top-read")
-	if err != nil {
-		fmt.Printf("error: %s \n", err)
-		return
-	}
-	fmt.Printf("visit: %s \n", url)
+
 	for {
 
 	}
+
 }

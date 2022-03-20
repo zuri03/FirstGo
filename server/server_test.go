@@ -1,3 +1,8 @@
+/*
+*TODO:
+	- Remove spotify client as a test dependency
+*/
+
 package server
 
 import (
@@ -18,7 +23,7 @@ func TestItemIdEndpoint(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, "/Info", nil)
 		resp := httptest.NewRecorder()
 
-		handler := getItemHandler{spotify: client}
+		handler := getItemHandler{Spotify: client}
 		handler.ServeHTTP(resp, req)
 
 		if resp.Code != 400 {
@@ -34,7 +39,7 @@ func TestItemIdEndpoint(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, "/Info?search=future", nil)
 		resp := httptest.NewRecorder()
 
-		handler := getItemHandler{spotify: client}
+		handler := getItemHandler{Spotify: client}
 		handler.ServeHTTP(resp, req)
 
 		if resp.Code != 200 {
@@ -63,7 +68,7 @@ func TestAnalysisEndpoint(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, "/Analysis", nil)
 		resp := httptest.NewRecorder()
 
-		handler := analysisHandler{spotify: client}
+		handler := analysisHandler{Spotify: client}
 		handler.ServeHTTP(resp, req)
 
 		res := resp.Result()

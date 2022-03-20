@@ -1,1 +1,11 @@
-FROM golang:1.17
+FROM golang:1.17 as builder
+
+#WORKDIR /build
+COPY ./ ./
+RUN CGO_ENABLED=0 make FirstGo-Server
+
+FROM scratch
+WORKDIR /FirstGo
+COPY --from=builder /build/FirstGo-Server ./main
+EXPOSE 8080
+ENTRYPOINT [ "./main" ]
