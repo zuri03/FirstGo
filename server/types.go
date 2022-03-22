@@ -1,5 +1,21 @@
 package server
 
+import "time"
+
+type artistResponseWrapper struct {
+	Artist artistSearchResult `json:"artists"`
+}
+
+type artistSearchResult struct {
+	Items    []artist `json:"items"`
+	Total    int      `json:"total"`
+	Limit    int      `json:"limit"`
+	Offset   int      `json:"offset"`
+	Href     string   `json:"href"`
+	Previous string   `json:"previous"`
+	Next     string   `json:"next"`
+}
+
 type userInfo struct {
 	Items    []item `json:"items"`
 	Total    int    `json:"total"`
@@ -84,10 +100,6 @@ type restriction struct {
 	Reason string `json:"reason"`
 }
 
-type artistSearchResult struct {
-	Artists []artist
-}
-
 type artist struct {
 	ExternalUrl externalUrl `json:"external_url"`
 	Href        string      `json:"href"`
@@ -112,6 +124,12 @@ type image struct {
 	Url    string `json:"url"`
 	Height int    `json:"height"`
 	Width  int    `json:"width"`
+}
+
+type WrappedToken struct {
+	TimeReceived time.Time
+	ExpiresAt    time.Time
+	Token        spotifyAccessToken
 }
 
 type spotifyAccessToken struct {

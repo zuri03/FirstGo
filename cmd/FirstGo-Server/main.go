@@ -37,7 +37,5 @@ func main() {
 	Server.InitializeServer()
 
 	for {
-
 	}
-
 }

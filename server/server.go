@@ -1,39 +1,30 @@
-/*
-*
-TODO:
-	- Check accept header of each incoming request
-	- Set content type for each response
-	- Determine way to store and match access tokens for each request
-*/
-
 package server
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/zuri03/FirstGo/spotify"
 )
 
-type SpotifyClient interface {
-	GetUserTopItems(offset int, limit int, accessToken string) ([]byte, error)
-	GetItemFromId(itemType string, accessToken string, ids ...string) ([]byte, error)
-	GetItemFromName(search string, itemType string, accessToken string) ([]byte, error)
-	GetClientAccessToken(method string, redirectUri string, code string) ([]byte, error)
-	GenerateAuthorizationCodeUrl(redirectUri string, scopes ...string) string
-	GetRelatedArtist(artistId string, accessToken string) ([]byte, error)
-	GetTracksFromArtist(artistId string, accessToken string) ([]byte, error)
-	GetSavedTracks(accessToken string) ([]byte, error)
-	GetRecommendations(artistId []string, genres []string, trackIds []string, accessToken string) ([]byte, error)
-}
-
 //Handlers
-type analysisHandler struct{ Spotify SpotifyClient }
+type analysisHandler struct{ Spotify *spotify.SpotifyApiClient }
 
 func (h *analysisHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
+	fmt.Printf("GOT ANALYSIS REQUEST")
+	var resp struct {
+		data  []string
+		error string
+	}
+
 	values := req.URL.Query()
 	if _, ok := values["error"]; ok {
-		writer.WriteHeader(400)
-		writer.Write([]byte("Error with spotify api"))
+		resp.error = "Server error has occured"
+		writer.WriteHeader(500)
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
 		return
 	}
 
@@ -48,32 +39,41 @@ func (h *analysisHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 		"http://localhost:8080/Analysis",
 		code[0])
 	if err != nil {
-		writer.WriteHeader(400)
-		writer.Write([]byte(err.Error()))
+		resp.error = "Server error has occured"
+		writer.WriteHeader(500)
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
 		return
 	}
 
 	var token spotifyAccessToken
 	err = json.Unmarshal(bytes, &token)
 	if err != nil {
-		writer.WriteHeader(400)
-		writer.Write([]byte(err.Error()))
+		resp.error = "Server error has occured"
+		writer.WriteHeader(500)
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
 		return
 	}
 
+	expires := time.Now().Add(time.Second * time.Duration(token.ExpiresIn))
 	var responses []userInfo
 	for offset := 0; ; offset += 50 {
-		body, err := h.Spotify.GetUserTopItems(offset, 50, token.AccessToken)
+		body, err := h.Spotify.GetUserTopItems(offset, 50, token.AccessToken, expires)
 		if err != nil {
-			writer.WriteHeader(400)
-			writer.Write([]byte(err.Error()))
+			resp.error = "Server error has occured"
+			writer.WriteHeader(500)
+			json, _ := json.Marshal(resp)
+			writer.Write(json)
 			return
 		}
 		fmt.Printf("json: \n %s \n", string(body))
 		var obj userInfo
 		if err := json.Unmarshal(body, &obj); err != nil {
-			writer.WriteHeader(400)
-			writer.Write([]byte(err.Error()))
+			resp.error = "Server error has occured"
+			writer.WriteHeader(500)
+			json, _ := json.Marshal(resp)
+			writer.Write(json)
 			return
 		}
 
@@ -95,19 +95,27 @@ func (h *analysisHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 }
 
 //Handlers
-type playlistHandler struct{ Spotify SpotifyClient }
+type playlistHandler struct{ Spotify *spotify.SpotifyApiClient }
 
 func (h *playlistHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
+	fmt.Printf("GOT PLAYLIST REQUEST")
+	var resp struct {
+		Data  [10]string
+		Error string
+	}
+
 	values := req.URL.Query()
 	if _, ok := values["error"]; ok {
+		resp.Error = "Server error has occured"
 		writer.WriteHeader(500)
-		writer.Write([]byte("Error with spotify api"))
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
 		return
 	}
 
 	code, ok := values["code"]
 	if !ok {
-		url := h.Spotify.GenerateAuthorizationCodeUrl("http://localhost:8080/MakePlaylist", "user-top-read", "playlist-modify-public", "user-library-read")
+		url := h.Spotify.GenerateAuthorizationCodeUrl("http://localhost:8080/Playlist", "user-top-read", "playlist-modify-public", "user-library-read")
 		http.Redirect(writer, req, url, 301)
 		return
 	} else {
@@ -115,78 +123,104 @@ func (h *playlistHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 	}
 
 	bytes, err := h.Spotify.GetClientAccessToken("authorizationCode",
-		"http://localhost:8080/MakePlaylist",
+		"http://localhost:8080/Playlist",
 		code[0])
 	if err != nil {
-		writer.WriteHeader(400)
-		writer.Write([]byte(err.Error()))
+		resp.Error = err.Error()
+		writer.WriteHeader(500)
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
 		return
 	}
 
+	//Parse access token
 	var token spotifyAccessToken
 	err = json.Unmarshal([]byte(bytes), &token)
 	if err != nil {
-		writer.WriteHeader(400)
-		writer.Write([]byte(err.Error()))
+		resp.Error = err.Error()
+		writer.WriteHeader(500)
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
 		return
 	}
+	expires := time.Now().Add(time.Second * time.Duration(token.ExpiresIn))
 
-	fmt.Printf("scopes => %s\n", token.Scope)
-	body, err := h.Spotify.GetSavedTracks(token.AccessToken)
+	//Get users saved tracks to use as parameters for recommendations
+	body, err := h.Spotify.GetSavedTracks(token.AccessToken, expires)
 	var obj savedTracksResponse
 	if err := json.Unmarshal(body, &obj); err != nil {
-		writer.WriteHeader(400)
-		writer.Write([]byte(err.Error()))
+		resp.Error = err.Error()
+		writer.WriteHeader(500)
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
 		return
 	}
 
+	//Gather query params for song recomendations
 	artistId := obj.Items[0].Track.Artists[0].Id
 	trackId := obj.Items[0].Track.Id
-	body, err = h.Spotify.GetItemFromId("artist", token.AccessToken, artistId)
+	body, err = h.Spotify.GetItemFromId("artist", token.AccessToken, expires, artistId)
 	var topArtist artist
 	if err := json.Unmarshal(body, &topArtist); err != nil {
-		writer.WriteHeader(400)
-		writer.Write([]byte(err.Error()))
+		resp.Error = err.Error()
+		writer.WriteHeader(500)
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
 		return
 	}
 	genres := topArtist.Genres
 
-	if len(genres) > 3 {
-		genres = genres[:3]
-	}
-	body, err = h.Spotify.GetRecommendations([]string{artistId}, genres, []string{trackId}, token.AccessToken)
+	//Get song recommendations from spotify client
+	body, err = h.Spotify.GetRecommendations([]string{artistId}, genres, []string{trackId}, token.AccessToken, expires)
 	if err != nil {
+		resp.Error = err.Error()
 		writer.WriteHeader(500)
-		writer.Write([]byte(err.Error()))
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
 		return
 	}
 
+	//Parse a recommendation result object checking for errors
 	var recommendations recommendationsResult
 	if err := json.Unmarshal(body, &recommendations); err != nil {
-		writer.WriteHeader(400)
-		writer.Write([]byte(err.Error()))
+		resp.Error = err.Error()
+		writer.WriteHeader(500)
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
 		return
 	}
 
-	names := make([]string, 10)
+	//For now make an array of the first 10 recommendations' names
+	var names [10]string
 	for i := 0; i < 10; i++ {
-		fmt.Printf("rec %d => %s\n", i, recommendations.Tracks[i].Name)
-		names = append(names, recommendations.Tracks[i].Name)
+		names[i] = recommendations.Tracks[i].Name
 	}
 
+	//Create the response
+	resp.Data = names
+	resp.Error = ""
+	json, _ := json.Marshal(resp)
+	fmt.Printf("json => %s\n", json)
 	writer.Header().Set("Content-Type", "application/json")
-	writer.Write([]byte(""))
+	writer.Write(json)
 	return
 }
 
-type getItemHandler struct{ Spotify SpotifyClient }
+type getItemHandler struct{ Spotify *spotify.SpotifyApiClient }
 
 func (h *getItemHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
+	fmt.Printf("got req => %s\n", string(req.URL.Path))
+	var resp struct {
+		Data  artistSearchResult
+		Error string
+	}
 	values := req.URL.Query()
 	searchQuery, ok := values["search"]
 	if !ok || searchQuery[0] == "" {
+		resp.Error = "error: Missing query parameter - search"
 		writer.WriteHeader(400)
-		writer.Write([]byte("error: Missing query parameter - search"))
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
 		return
 	}
 
@@ -194,29 +228,51 @@ func (h *getItemHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request
 	var token spotifyAccessToken
 	err = json.Unmarshal([]byte(bytes), &token)
 	if err != nil {
-		writer.WriteHeader(400)
-		writer.Write([]byte(err.Error()))
-		return
-	}
-	json, err := h.Spotify.GetItemFromName(searchQuery[0], "artist", token.AccessToken)
-	if err != nil {
+		resp.Error = err.Error()
 		writer.WriteHeader(500)
-		writer.Write([]byte("error: Encountered server error"))
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
 		return
 	}
-	writer.Write([]byte(json))
+	expires := time.Now().Add(time.Second * time.Duration(token.ExpiresIn))
+
+	item, err := h.Spotify.GetItemFromName(searchQuery[0], "artist", token.AccessToken, expires)
+	if err != nil {
+		resp.Error = err.Error()
+		writer.WriteHeader(500)
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
+		return
+	}
+
+	var obj artistResponseWrapper
+	if err := json.Unmarshal(item, &obj); err != nil {
+		resp.Error = err.Error()
+		writer.WriteHeader(500)
+		json, _ := json.Marshal(resp)
+		writer.Write(json)
+		return
+	}
+
+	resp.Data = obj.Artist
+	resp.Error = ""
+	json, _ := json.Marshal(resp)
+	writer.Header().Set("Content-Type", "application/json")
+	writer.Write(json)
+	return
 }
 
-func InitializeServer(spotifyService SpotifyClient) {
-
-	http.Handle("/Analysis", &analysisHandler{Spotify: spotifyService})
-	http.Handle("/Info", &getItemHandler{Spotify: spotifyService})
-	http.Handle("/MakePlaylist", &playlistHandler{Spotify: spotifyService})
+func InitializeServer() {
+	s := spotify.NewClient()
+	http.Handle("/Analysis", &analysisHandler{Spotify: s})
+	http.Handle("/Info", &getItemHandler{Spotify: s})
+	http.Handle("/Playlist", &playlistHandler{Spotify: s})
 	go func() {
-		err := http.ListenAndServe("localhost:8080", nil)
+		err := http.ListenAndServe(":8080", nil)
 		if err != nil {
 			return
 		}
 		fmt.Printf("Listening on port 8080 \n")
 	}()
+	fmt.Printf("now listening on port 8080")
 }

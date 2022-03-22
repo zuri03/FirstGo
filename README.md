@@ -1,6 +1,11 @@
 
 # FirstGo
 
+## TODO
+- Add token refresh functionality to spotify client
+- Start planning web socket
+- Add accont manipulation endpoints
+
 ## v1.0.0
 
 ### Description

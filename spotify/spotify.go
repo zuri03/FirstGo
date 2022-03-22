@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 //Client acess token
@@ -23,11 +24,11 @@ const (
 	authUrl    = "https://accounts.spotify.com"
 )
 
-func (s *SpotifyApiClient) GetUserTopItems(offset int, limit int, accessToken string) ([]byte, error) {
-	if accessToken == "" {
+func (s *SpotifyApiClient) GetUserTopItems(offset int, limit int, token string, expires time.Time) ([]byte, error) {
+	if token == "" {
 		return nil, errors.New("error: client not authorized")
 	}
-	authorization := fmt.Sprintf("Bearer %s", accessToken)
+	authorization := fmt.Sprintf("Bearer %s", token)
 	url := fmt.Sprintf("%s/me/top/tracks?limit=%d&offset=%d&time_range=long_term", baseApiUrl, limit, offset)
 	req, err := createRequest("GET", url, nil, [2]string{"Authorization", authorization})
 
@@ -50,14 +51,14 @@ func (s *SpotifyApiClient) GetUserTopItems(offset int, limit int, accessToken st
 	return body, err
 }
 
-func (s *SpotifyApiClient) GetItemFromId(itemType string, accessToken string, ids ...string) ([]byte, error) {
+func (s *SpotifyApiClient) GetItemFromId(itemType string, token string, expires time.Time, ids ...string) ([]byte, error) {
 
-	if accessToken == "" {
+	if token == "" {
 		bytes, err := s.GetClientAccessToken("clientCredentials", "", "")
 		if err != nil {
 			return nil, err
 		}
-		accessToken = string(bytes)
+		token = string(bytes)
 	}
 
 	idsParam := strings.Join(ids, ",")
@@ -82,7 +83,7 @@ func (s *SpotifyApiClient) GetItemFromId(itemType string, accessToken string, id
 	}
 
 	//Query search term endpoint
-	authorizationValue := fmt.Sprintf("Bearer %s", accessToken)
+	authorizationValue := fmt.Sprintf("Bearer %s", token)
 	req, err := createRequest("GET", endpoint, nil,
 		[2]string{"Authorization", authorizationValue},
 		[2]string{"Content-Type", "application/json"})
@@ -98,14 +99,14 @@ func (s *SpotifyApiClient) GetItemFromId(itemType string, accessToken string, id
 	return body, nil
 }
 
-func (s *SpotifyApiClient) GetItemFromName(search string, itemType string, accessToken string) ([]byte, error) {
+func (s *SpotifyApiClient) GetItemFromName(search string, itemType string, token string, expires time.Time) ([]byte, error) {
 
-	if accessToken == "" {
+	if token == "" {
 		bytes, err := s.GetClientAccessToken("clientCredentials", "", "")
 		if err != nil {
 			return nil, err
 		}
-		accessToken = string(bytes)
+		token = string(bytes)
 	}
 
 	endpoint := fmt.Sprintf("%s/search?q=%s&type=%s&limit=1", baseApiUrl,
@@ -113,7 +114,7 @@ func (s *SpotifyApiClient) GetItemFromName(search string, itemType string, acces
 		url.QueryEscape(itemType))
 
 	//Query search term endpoint
-	authorizationValue := fmt.Sprintf("Bearer %s", accessToken)
+	authorizationValue := fmt.Sprintf("Bearer %s", token)
 	req, err := createRequest("GET", endpoint, nil,
 		[2]string{"Authorization", authorizationValue},
 		[2]string{"Content-Type", "application/json"})
@@ -201,8 +202,8 @@ func (s *SpotifyApiClient) GenerateAuthorizationCodeUrl(redirectUri string, scop
 	return uri
 }
 
-func (s *SpotifyApiClient) GetRelatedArtist(artistId string, accessToken string) ([]byte, error) {
-	if accessToken == "" {
+func (s *SpotifyApiClient) GetRelatedArtist(artistId string, token string, expires time.Time) ([]byte, error) {
+	if token == "" {
 		return nil, errors.New("error: client not authenticated")
 	}
 
@@ -210,7 +211,7 @@ func (s *SpotifyApiClient) GetRelatedArtist(artistId string, accessToken string)
 		url.QueryEscape(artistId))
 
 	//Query search term endpoint
-	authorizationValue := fmt.Sprintf("Bearer %s", accessToken)
+	authorizationValue := fmt.Sprintf("Bearer %s", token)
 	req, err := createRequest("GET", endpoint, nil,
 		[2]string{"Authorization", authorizationValue},
 		[2]string{"Content-Type", "application/json"})
@@ -228,8 +229,8 @@ func (s *SpotifyApiClient) GetRelatedArtist(artistId string, accessToken string)
 	return body, nil
 }
 
-func (s *SpotifyApiClient) GetTracksFromArtist(artistId string, accessToken string) ([]byte, error) {
-	if accessToken == "" {
+func (s *SpotifyApiClient) GetTracksFromArtist(artistId string, token string, expires time.Time) ([]byte, error) {
+	if token == "" {
 		return nil, errors.New("error: client not authenticated")
 	}
 
@@ -237,7 +238,7 @@ func (s *SpotifyApiClient) GetTracksFromArtist(artistId string, accessToken stri
 		url.QueryEscape(artistId))
 
 	//Query search term endpoint
-	authorizationValue := fmt.Sprintf("Bearer %s", accessToken)
+	authorizationValue := fmt.Sprintf("Bearer %s", token)
 	req, err := createRequest("GET", endpoint, nil,
 		[2]string{"Authorization", authorizationValue},
 		[2]string{"Content-Type", "application/json"})
@@ -255,16 +256,16 @@ func (s *SpotifyApiClient) GetTracksFromArtist(artistId string, accessToken stri
 	return body, nil
 }
 
-func (s *SpotifyApiClient) GetSavedTracks(accessToken string) ([]byte, error) {
+func (s *SpotifyApiClient) GetSavedTracks(token string, expires time.Time) ([]byte, error) {
 
-	if accessToken == "" {
+	if token == "" {
 		return nil, errors.New("error: client not authenticated")
 	}
 
 	endpoint := fmt.Sprintf("%s/me/tracks", baseApiUrl)
 
 	//Query search term endpoint
-	authorizationValue := fmt.Sprintf("Bearer %s", accessToken)
+	authorizationValue := fmt.Sprintf("Bearer %s", token)
 	req, err := createRequest("GET", endpoint, nil,
 		[2]string{"Authorization", authorizationValue},
 		[2]string{"Content-Type", "application/json"})
@@ -280,39 +281,29 @@ func (s *SpotifyApiClient) GetSavedTracks(accessToken string) ([]byte, error) {
 	return body, nil
 }
 
-func (s *SpotifyApiClient) GetRecommendations(artistId []string, genres []string, trackIds []string, accessToken string) ([]byte, error) {
-	if accessToken == "" {
+func (s *SpotifyApiClient) GetRecommendations(artistId []string, genres []string, trackIds []string, token string, expires time.Time) ([]byte, error) {
+	if token == "" {
 		return nil, errors.New("error: client not authenticated")
 	}
-	/*
 
-		for i, art := range artistId {
-			artistId[i] = url.QueryEscape(art)
-		}
+	if len(genres) > 3 {
+		genres = genres[:3]
+	}
 
-			for i, gen := range genres {
-				genres[i] = url.QueryEscape(gen)
-			}
+	if len(artistId) > 3 {
+		artistId = artistId[:3]
+	}
 
-		for i, trck := range trackIds {
-			trackIds[i] = url.QueryEscape(trck)
-		}
-	*/
-	//artistParam := strings.Join(artistId, ",")
-	genresParam := strings.Join(genres, ",")
-	//tracksParam := strings.Join(trackIds, ",")
-	/*
-		endpoint := fmt.Sprintf("%s/recommendations?seed_artists=%s&seed_genres=%s&seed_tracks=%s", baseApiUrl,
-			artistParam, genresParam, tracksParam)*/
-	_ = "conscious+hip+hop, hip+hop, rap, west+coast+rap"
+	if len(trackIds) > 3 {
+		trackIds = trackIds[:3]
+	}
 	endpoint := fmt.Sprintf("%s/recommendations?seed_artists=%s&seed_genres=%s&seed_tracks=%s", baseApiUrl,
 		url.QueryEscape(strings.Join(artistId, ",")),
 		url.QueryEscape(strings.Join(genres, ",")),
 		url.QueryEscape(strings.Join(trackIds, ",")))
 
-	fmt.Printf("ENDPOINT REC => %s\n", genresParam)
 	//Query search term endpoint
-	authorizationValue := fmt.Sprintf("Bearer %s", accessToken)
+	authorizationValue := fmt.Sprintf("Bearer %s", token)
 	req, err := createRequest("GET", endpoint, nil,
 		[2]string{"Authorization", authorizationValue},
 		[2]string{"Content-Type", "application/json"})
