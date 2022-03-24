@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -171,36 +170,6 @@ func (s *SpotifyApiClient) GetClientAccessToken(method string, redirectUri strin
 }
 
 //Make this function private after testing
-func (s *SpotifyApiClient) GenerateAuthorizationCodeUrl(redirectUri string, scopes ...string) string {
-	generateRandomState := func() string {
-		const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-		bytes := make([]byte, 16)
-		for idx := range bytes {
-			bytes[idx] = chars[rand.Intn(len(chars))]
-		}
-		return string(bytes)
-	}
-
-	uri := fmt.Sprintf("%s/authorize?client_id=%s&response_type=code&redirect_uri=%s&state=%s",
-		authUrl,
-		url.QueryEscape(os.Getenv("CLIENT_ID")),
-		url.QueryEscape(redirectUri),
-		generateRandomState())
-
-	var scopeStr string
-	if len(scopes) > 0 {
-		scopeStr = ""
-
-		for _, scope := range scopes {
-			fmt.Printf("scope found => %s\n", scope)
-			scopeStr += fmt.Sprintf("%s ", scope)
-		}
-
-		uri = fmt.Sprintf("%s&scope=%s", uri, url.QueryEscape(scopeStr))
-	}
-
-	return uri
-}
 
 func (s *SpotifyApiClient) GetRelatedArtist(artistId string, token string, expires time.Time) ([]byte, error) {
 	if token == "" {

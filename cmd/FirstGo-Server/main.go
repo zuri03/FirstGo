@@ -1,7 +1,15 @@
 package main
 
+/*
+*TODO:
+	- Set up web socket
+	- Set up server logging
+	- Set up channels and signling for graceful shutdown
+	- Try to simplify main
+*/
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"unicode"
@@ -18,9 +26,9 @@ func main() {
 		return -1
 	}
 
-	data, err := os.ReadFile("../../.env")
+	data, err := os.ReadFile("./.env")
 	if err != nil {
-		fmt.Println(err)
+		log.Fatal(err)
 		return
 	}
 
@@ -34,7 +42,11 @@ func main() {
 	os.Setenv(clientSecret[0], secret)
 
 	fmt.Println("====== INITIALIZING SERVER =====")
-	Server.InitializeServer()
+	file, err := os.OpenFile("./logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	Server.InitializeServer(file)
 
 	for {
 	}

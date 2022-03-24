@@ -2,36 +2,51 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/zuri03/FirstGo/spotify"
 )
 
+var (
+	logger *log.Logger
+)
+
+func returnErr(writer http.ResponseWriter, statusCode int, res interface{}, errMsg string, err error) {
+	if err != nil {
+		logger.Printf("ERROR: %s : %s\n", errMsg, err.Error())
+	} else {
+		logger.Printf("ERROR: %s : %s\n", errMsg, "")
+	}
+	writer.WriteHeader(500)
+	json, _ := json.Marshal(res)
+	writer.Write(json)
+}
+
 //Handlers
 type analysisHandler struct{ Spotify *spotify.SpotifyApiClient }
 
 func (h *analysisHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
-	fmt.Printf("GOT ANALYSIS REQUEST")
 	var resp struct {
-		data  []string
-		error string
+		Data  []string
+		Error string
 	}
+
+	writer.Header().Set("Content-Type", "application/json")
 
 	values := req.URL.Query()
 	if _, ok := values["error"]; ok {
-		resp.error = "Server error has occured"
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "Spotify authorization endpoint returned error", nil)
 		return
 	}
 
 	code, ok := values["code"]
 	if !ok {
-		url := h.Spotify.GenerateAuthorizationCodeUrl("http://localhost:8080/Analysis", "user-top-read")
-		http.Redirect(writer, req, url, 301)
+		resp.Error = "Not Authorized"
+		returnErr(writer, 400, resp, "Missing authoriztion code", nil)
 		return
 	}
 
@@ -39,20 +54,16 @@ func (h *analysisHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 		"http://localhost:8080/Analysis",
 		code[0])
 	if err != nil {
-		resp.error = "Server error has occured"
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "GetClientAccessToken returned error", nil)
 		return
 	}
 
 	var token spotifyAccessToken
 	err = json.Unmarshal(bytes, &token)
 	if err != nil {
-		resp.error = "Server error has occured"
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "Error unmarshaling spotify access token", nil)
 		return
 	}
 
@@ -61,19 +72,15 @@ func (h *analysisHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 	for offset := 0; ; offset += 50 {
 		body, err := h.Spotify.GetUserTopItems(offset, 50, token.AccessToken, expires)
 		if err != nil {
-			resp.error = "Server error has occured"
-			writer.WriteHeader(500)
-			json, _ := json.Marshal(resp)
-			writer.Write(json)
+			resp.Error = "Internal Server Error"
+			returnErr(writer, 500, resp, "GetUserTopItems returned error", nil)
 			return
 		}
-		fmt.Printf("json: \n %s \n", string(body))
+
 		var obj userInfo
 		if err := json.Unmarshal(body, &obj); err != nil {
-			resp.error = "Server error has occured"
-			writer.WriteHeader(500)
-			json, _ := json.Marshal(resp)
-			writer.Write(json)
+			resp.Error = "Internal Server Error"
+			returnErr(writer, 500, resp, "Error unmarshaling json", nil)
 			return
 		}
 
@@ -85,51 +92,47 @@ func (h *analysisHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 
 	genStats, err := generalStats(responses)
 	if err != nil {
-		writer.WriteHeader(400)
-		writer.Write([]byte(err.Error()))
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "generalStats returned error", nil)
 		return
 	}
 
-	fmt.Printf("Top artists => %s \n", genStats)
-	writer.Write([]byte(genStats))
+	res, _ := json.Marshal(genStats)
+	writer.Write([]byte(res))
+	return
 }
 
 //Handlers
 type playlistHandler struct{ Spotify *spotify.SpotifyApiClient }
 
 func (h *playlistHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
-	fmt.Printf("GOT PLAYLIST REQUEST")
 	var resp struct {
 		Data  [10]string
 		Error string
 	}
 
+	writer.Header().Set("Content-Type", "application/json")
+
 	values := req.URL.Query()
 	if _, ok := values["error"]; ok {
 		resp.Error = "Server error has occured"
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		returnErr(writer, 500, resp, "Spotify authorization api returned error", nil)
 		return
 	}
 
 	code, ok := values["code"]
 	if !ok {
-		url := h.Spotify.GenerateAuthorizationCodeUrl("http://localhost:8080/Playlist", "user-top-read", "playlist-modify-public", "user-library-read")
-		http.Redirect(writer, req, url, 301)
+		resp.Error = "Not Authorized"
+		returnErr(writer, 400, resp, "Request was missing authorization code", nil)
 		return
-	} else {
-		fmt.Printf("CODE FOUND \n")
 	}
 
 	bytes, err := h.Spotify.GetClientAccessToken("authorizationCode",
 		"http://localhost:8080/Playlist",
 		code[0])
 	if err != nil {
-		resp.Error = err.Error()
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "GetClientAccessToken returned error", err)
 		return
 	}
 
@@ -137,10 +140,8 @@ func (h *playlistHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 	var token spotifyAccessToken
 	err = json.Unmarshal([]byte(bytes), &token)
 	if err != nil {
-		resp.Error = err.Error()
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "Error unmarshaling access token", err)
 		return
 	}
 	expires := time.Now().Add(time.Second * time.Duration(token.ExpiresIn))
@@ -149,10 +150,8 @@ func (h *playlistHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 	body, err := h.Spotify.GetSavedTracks(token.AccessToken, expires)
 	var obj savedTracksResponse
 	if err := json.Unmarshal(body, &obj); err != nil {
-		resp.Error = err.Error()
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "Error unmarshaling json", err)
 		return
 	}
 
@@ -162,10 +161,8 @@ func (h *playlistHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 	body, err = h.Spotify.GetItemFromId("artist", token.AccessToken, expires, artistId)
 	var topArtist artist
 	if err := json.Unmarshal(body, &topArtist); err != nil {
-		resp.Error = err.Error()
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "Error unmarshaling json", err)
 		return
 	}
 	genres := topArtist.Genres
@@ -173,20 +170,16 @@ func (h *playlistHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 	//Get song recommendations from spotify client
 	body, err = h.Spotify.GetRecommendations([]string{artistId}, genres, []string{trackId}, token.AccessToken, expires)
 	if err != nil {
-		resp.Error = err.Error()
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "GetRecommendations returned error", err)
 		return
 	}
 
 	//Parse a recommendation result object checking for errors
 	var recommendations recommendationsResult
 	if err := json.Unmarshal(body, &recommendations); err != nil {
-		resp.Error = err.Error()
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "Error unmarshaling json", err)
 		return
 	}
 
@@ -200,27 +193,25 @@ func (h *playlistHandler) ServeHTTP(writer http.ResponseWriter, req *http.Reques
 	resp.Data = names
 	resp.Error = ""
 	json, _ := json.Marshal(resp)
-	fmt.Printf("json => %s\n", json)
 	writer.Header().Set("Content-Type", "application/json")
 	writer.Write(json)
-	return
 }
 
 type getItemHandler struct{ Spotify *spotify.SpotifyApiClient }
 
 func (h *getItemHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
-	fmt.Printf("got req => %s\n", string(req.URL.Path))
 	var resp struct {
 		Data  artistSearchResult
 		Error string
 	}
+
+	writer.Header().Set("Content-Type", "application/json")
+
 	values := req.URL.Query()
 	searchQuery, ok := values["search"]
 	if !ok || searchQuery[0] == "" {
-		resp.Error = "error: Missing query parameter - search"
-		writer.WriteHeader(400)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Missing parameter: search"
+		returnErr(writer, 400, resp, "User missing search query param", nil)
 		return
 	}
 
@@ -228,41 +219,38 @@ func (h *getItemHandler) ServeHTTP(writer http.ResponseWriter, req *http.Request
 	var token spotifyAccessToken
 	err = json.Unmarshal([]byte(bytes), &token)
 	if err != nil {
-		resp.Error = err.Error()
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "Error unmarshaling access token", err)
 		return
 	}
 	expires := time.Now().Add(time.Second * time.Duration(token.ExpiresIn))
 
 	item, err := h.Spotify.GetItemFromName(searchQuery[0], "artist", token.AccessToken, expires)
 	if err != nil {
-		resp.Error = err.Error()
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "GetItemFromName returned error", err)
 		return
 	}
 
 	var obj artistResponseWrapper
 	if err := json.Unmarshal(item, &obj); err != nil {
-		resp.Error = err.Error()
-		writer.WriteHeader(500)
-		json, _ := json.Marshal(resp)
-		writer.Write(json)
+		resp.Error = "Internal Server Error"
+		returnErr(writer, 500, resp, "Error unmarshaling artist response json", err)
 		return
 	}
 
 	resp.Data = obj.Artist
 	resp.Error = ""
 	json, _ := json.Marshal(resp)
-	writer.Header().Set("Content-Type", "application/json")
+
 	writer.Write(json)
 	return
 }
 
-func InitializeServer() {
+func InitializeServer(f *os.File) {
+
+	logger = log.New(f, "http: ", log.LstdFlags)
+
 	s := spotify.NewClient()
 	http.Handle("/Analysis", &analysisHandler{Spotify: s})
 	http.Handle("/Info", &getItemHandler{Spotify: s})
@@ -270,9 +258,9 @@ func InitializeServer() {
 	go func() {
 		err := http.ListenAndServe(":8080", nil)
 		if err != nil {
+			logger.Fatal(err)
 			return
 		}
-		fmt.Printf("Listening on port 8080 \n")
 	}()
-	fmt.Printf("now listening on port 8080")
+	logger.Printf("now listening on port 8080 \n")
 }
